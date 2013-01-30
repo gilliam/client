@@ -1,7 +1,7 @@
 # The Gilliam Client
 
 This is the `gilliam` CLI client for the Gilliam app platform.  It is a
-simple and pretty straight format tool to interact with the system.
+simple and pretty straight forward tool to interact with the system.
 
 Hopefully the commands are intuitive.
 

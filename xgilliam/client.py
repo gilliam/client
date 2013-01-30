@@ -124,17 +124,19 @@ class API(object):
             raise
 
     def scale(self):
+        """Return current scale values."""
         return self._get_json(self.config.app_url, 'scale')
 
     def set_scale(self, scale):
+        """Set scale values."""
         self._put_json(scale, self.config.app_url, 'scale')
 
     def deploy(self):
         """Return current deploy as a C{dict}."""
         return self._get_json(self.config.app_url, 'deploy', 'latest')
 
-    def create_deploy(self, build, image, pstable,
-                      app_config, text):
+    def create_deploy(self, build, image, pstable, app_config, text):
+        """Create a new deploy."""
         try:
             request = {'build': build, 'image': image,
                        'pstable': pstable, 'config': app_config,
@@ -197,6 +199,18 @@ def scale(config, orch_api, app_options, argv):
         orch_api.set_scale(current)
     for proc, value in current.items():
         print "%s=%d" % (proc, value)
+
+
+@expose("config")
+def display_config(config, orch_api, app_options, argv):
+    """Usage: gillaim config
+
+    Display current deployed config.
+    """
+    options = docopt(display_config.__doc__, argv=argv)
+    current = orch_api.deploy()
+    for k, v in current['config'].items():
+        print "%s=%r" % (k, str(v))
 
 
 @expose("deploy")

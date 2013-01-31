@@ -83,6 +83,10 @@ class Config(object):
         return self._attach
 
     @property
+    def app(self):
+        return self._read_attach()
+
+    @property
     def app_url(self):
         """Return base URL to the attached app in the orchestrator."""
         attach = self._read_attach()
@@ -94,6 +98,42 @@ class Config(object):
         self._read_config()
         return 'http://%s:%d' % (self._config['orchestrator']['host'],
                                   self._config['orchestrator']['port'])
+
+    @property
+    def builder_url(self):
+        self._read_config()
+        return 'http://%s:%d' % (self._config['builder']['host'],
+                                  self._config['builder']['port'])
+
+
+class BuilderAPI(object):
+    """Abstraction that provides us with an API for building app
+    images.
+    """
+
+    def __init__(self, config, requests):
+        self.config = config
+        self.requests = requests
+
+    def _get_json(self, *parts):
+        try:
+            response = self.requests.get(urlchild(*parts))
+            response.raise_for_status()
+        except:
+            raise
+        else:
+            return response.json()
+
+    def create_build(self, app, repository, commit, stdout):
+        """Create a new build with the given parameters."""
+        request = {'repository': repository}
+        if commit is not None:
+            request['commit'] = commit
+        response = self.requests.post(urlchild(self.config.builder_url,
+            'build', app), data=json.dumps(request), stream=True)
+        for data in response.iter_content():
+            stdout.write(data)
+        return self._get_json(response.headers['location'])
 
 
 class API(object):
@@ -122,6 +162,10 @@ class API(object):
             response.raise_for_status()
         except:
             raise
+
+    def app(self):
+        """Return the current app."""
+        return self._get_json(self.config.app_url)
 
     def scale(self):
         """Return current scale values."""
@@ -172,8 +216,24 @@ def attach(config, app_options, argv, requests=requests):
         config.attach(options['APP'])
 
 
+@expose("build")
+def build(config, orch_api, builder_api, app_options, argv,
+          stdout=sys.stdout):
+    """Usage: gilliam build [--repository REPOSITORY] [COMMIT]
+    """
+    options = docopt(build.__doc__, argv=argv)
+    if not options['--repository']:
+        app = orch_api.app()
+        options['--repository'] = app['repository']
+
+    current = builder_api.create_build(config.app, options['--repository'],
+        options['COMMIT'], stdout)
+
+    print "done: build is called '%s'." % (current['name'],)
+
+
 @expose("scale")
-def scale(config, orch_api, app_options, argv):
+def scale(config, orch_api, builder_api, app_options, argv):
     """Usage: gilliam scale [<SPEC>...]
 
     Set scale parameters for procs.
@@ -202,7 +262,7 @@ def scale(config, orch_api, app_options, argv):
 
 
 @expose("config")
-def display_config(config, orch_api, app_options, argv):
+def display_config(config, orch_api, builder_api, app_options, argv):
     """Usage: gillaim config
 
     Display current deployed config.
@@ -214,7 +274,7 @@ def display_config(config, orch_api, app_options, argv):
 
 
 @expose("deploy")
-def deploy(config, orch_api, app_options, argv):
+def deploy(config, orch_api, builder_api, app_options, argv):
     """Usage: gilliam deploy [options] [BUILD] [CONFIG...]
 
     Options:
@@ -262,8 +322,9 @@ def main():
         sys.exit("Unknown command")
     config = Config()
     orch_api = API(config, requests)
+    builder_api = BuilderAPI(config, requests)
     try:
-        COMMANDS[command](config, orch_api, options,
+        COMMANDS[command](config, orch_api, builder_api, options,
                           [command] + options['<args>'])
     except RuntimeError, re:
         sys.exit(str(re))

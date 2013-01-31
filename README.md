@@ -5,14 +5,35 @@ simple and pretty straight forward tool to interact with the system.
 
 Hopefully the commands are intuitive.
 
+*Short about the Gilliam model*: The fundamental object is *an
+app*. But an app may have one or more processes defined in the
+`Procfile` of the app source tree.  A process (aka a proc) is the unit
+of execution.q Gilliam has instances of processes rather than apps,
+but sometimes we refer to "any process instance of the app" as the app
+instance.
+
 # Installation
 
 To be written.
 
 # Config Files
 
-To be written
+There's a configuration file called `.gilliam` that lives in your
+home directory.  This is a YAML file that defines where different
+components of Gilliam can be located.  Below is an example file:
 
+    orchestrator:
+      host: localhost
+      port: 8000
+    builder:
+      host: localhost
+      port: 8001
+
+There's also a *app file* that specified which app the current
+environment is attached to.  This allows you to run the gilliam
+command-line tool without specifying what app to manage.  This file,
+called `.gilliam.app` lives in some directory where you normally run
+`gilliam` from.  For example, the root of your app source tree.
 
 # Basic Commands
 
@@ -38,10 +59,12 @@ directory to point to the newly created app.
 
 Before you can do your first deploy you must build your application
 code into something that can be deployed.  Simply issue the `build`
-command to build your `master` branch.
+command to build your `master` branch from the repository you
+specified when you created the app using the *create* command.
 
     $ gilliam build
     ...
+    done: build is called '6dc2f9e'.
     
 
 It is possible to specify a commit (tag, branch or hash) if you want
@@ -49,7 +72,8 @@ to build something special from the repository:
 
     $ gilliam build hot-fix-branch-2
     ...
- 
+    done: build is called 'hot-fix-branch-2'.
+
 Each build receive a name. Use this name when you refer to your build
 when you want to deploy it.
 
@@ -79,18 +103,13 @@ This will result in a new deploy still with build `6dc2f9e` and
 `CONN_LIMIT` set to 100, but now with a pool size of 16.
 
 Issuing the command without any parameters will display some
-information about the current deploy.
-
-## Displaying Configuration
-
-Just issue the `gilliam config` command to display the current full
-configuration.
-
+information about the current deploy.  Use the `gilliam config`
+command to display the active configuration.
 
 ## Setting Scale Values for an Application
 
-The number of instances for an application process is controlled using
-the `scale` command:
+The number of instances for an app process is controlled using the
+`scale` command:
 
     $ gilliam scale web=4
 

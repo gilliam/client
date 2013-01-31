@@ -135,6 +135,11 @@ class BuilderAPI(object):
             stdout.write(data)
         return self._get_json(response.headers['location'])
 
+    def build(self, app, name):
+        """Return build."""
+        return self._get_json(urlchild(self.config.builder_url,
+            'build', app, name))
+
 
 class API(object):
     """Abstraction that provides functions to talk to the orchestrator
@@ -292,20 +297,20 @@ def deploy(config, orch_api, builder_api, app_options, argv):
         options['BUILD'], argv = argv[0], argv[1:]
     else:
         options['BUILD'] = None
-    build = options['BUILD'] or current['build']
+    build_name = options['BUILD'] or current['build']
     # update config with new settings if needed:
     app_config = current['config']
     for pair in argv:
         name, value = pair.split('=', 1)
         app_config[name] = value
-    # FIXME: at this point we know the build and the config.  talk to
-    # the buildserver to get hold of a URL to the image and the
-    # pstable.
-    pstable = {'web': 'pythob web.py'}
-    image = 'app.tar.gz'
+
+    # get hold of build information from the builder.
+    build = builder_api.build(config.app, build_name)
+    pstable = build['pstable']
+    image = build['image']
     message = options['--message'] or ('build %s%s' % (
-            build, (' with config changes' if len(argv) else '')))
-    orch_api.create_deploy(build, image, pstable, app_config, message)
+            build_name, (' with config changes' if len(argv) else '')))
+    orch_api.create_deploy(build_name, image, pstable, app_config, message)
 
 
 @expose("help")

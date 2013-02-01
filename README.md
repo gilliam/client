@@ -1,16 +1,8 @@
 # The Gilliam Client
 
-This is the `gilliam` CLI client for the Gilliam app platform.  It is a
-simple and pretty straight forward tool to interact with the system.
-
-Hopefully the commands are intuitive.
-
-*Short about the Gilliam model*: The fundamental object is *an
-app*. But an app may have one or more processes defined in the
-`Procfile` of the app source tree.  A process (aka a proc) is the unit
-of execution.q Gilliam has instances of processes rather than apps,
-but sometimes we refer to "any process instance of the app" as the app
-instance.
+Gilliam is a platform for deploying your [12 factor
+apps](http://12factor.net/), and this is command-line client tool
+allowing your to create and deploy apps.
 
 # Installation
 

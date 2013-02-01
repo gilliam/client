@@ -237,7 +237,7 @@ def create(config, orch_api, builder_api, app_options, argv):
     """
     options = docopt(create.__doc__, argv=argv)
     current = orch_api.create_app(options['<NAME>'], options['<REPOSITORY>'],
-        options['REPOSITORY'] or options['<NAME>'],)
+        options['DESCRIPTION'] or options['<NAME>'],)
     config.set_app(options['<NAME>'])
 
 

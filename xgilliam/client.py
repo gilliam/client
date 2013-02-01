@@ -12,8 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
+"""\
+Client tool for Gilliam.
+
 Usage: gilliam [--version] <command> [<args>...]
+
+Options:
+    -h, --help  Display this help text and exit.
+    --version   Show version and quit.
 
 Commands:
     build       Issue a new build
@@ -23,16 +29,17 @@ Commands:
     create      Create a new application.
     attach      Attach environment to existing application
 
-See `gilliam help <command>` for more information on a specific command.
-
+See `gilliam help <command>` for more information on a specific
+command.
 """
 
-import sys
 from docopt import docopt
-import os.path
-import yaml
-import requests
 import json
+import os.path
+import requests
+import sys
+from textwrap import dedent
+import yaml
 
 
 def urlchild(base_url, *args):
@@ -40,6 +47,7 @@ def urlchild(base_url, *args):
 
 
 COMMANDS = {}
+
 
 def expose(name):
     """Expose a function as a command."""
@@ -85,6 +93,12 @@ class Config(object):
     @property
     def app(self):
         return self._read_attach()
+
+    def set_app(self, name):
+        """Set C{name} as active app."""
+        with open(self.ATTACH, 'wb') as fp:
+            fp.write(name)
+        self._attach = name
 
     @property
     def app_url(self):
@@ -172,6 +186,20 @@ class API(object):
         """Return the current app."""
         return self._get_json(self.config.app_url)
 
+    def create_app(self, name, repository, text):
+        """Create a new app with the given name."""
+        request = {'name': name, 'repository': repository,
+                   'text': text}
+        try:
+            response = self.requests.post(urlchild(
+                    self.config.orch_url, 'app'),
+                    data=json.dumps(request))
+            response.raise_for_status()
+        except:
+            raise
+        else:
+            return response.json()
+
     def scale(self):
         """Return current scale values."""
         return self._get_json(self.config.app_url, 'scale')
@@ -200,31 +228,26 @@ class API(object):
             return response.json()
 
 
-@expose("attach")
-def attach(config, app_options, argv, requests=requests):
-    """Usage: gilliam attach APP
+@expose("create")
+def create(config, orch_api, builder_api, app_options, argv):
+    """\
+    Usage: gilliam create <NAME> <REPOSITORY> [DESCRIPTION]
 
-    Attach to a given app.
+    Create a new app called NAME with code living at REPOSITORY.
     """
-    options = docopt(attach.__doc__, argv=argv)
-    app_url = urljoin(config.orch_url, '/app/%s' % (options['APP'],))
-    try:
-        response = requests.get(app_url)
-    except RequestException:
-        raise
-    else:
-        if response.status == 400:
-            sys.exit("%s: %s: no such app" % (argv[0], options['APP']))
-        else:
-            sys.exit("%s: server response: %r" % (argv[0], response))
-        output = response.json()
-        config.attach(options['APP'])
+    options = docopt(create.__doc__, argv=argv)
+    current = orch_api.create_app(options['<NAME>'], options['<REPOSITORY>'],
+        options['REPOSITORY'] or options['<NAME>'],)
+    config.set_app(options['<NAME>'])
 
 
 @expose("build")
 def build(config, orch_api, builder_api, app_options, argv,
           stdout=sys.stdout):
-    """Usage: gilliam build [--repository REPOSITORY] [COMMIT]
+    """\
+    Issue a new build.
+
+    Usage: gilliam build [--repository REPOSITORY] [COMMIT]
     """
     options = docopt(build.__doc__, argv=argv)
     if not options['--repository']:
@@ -239,9 +262,10 @@ def build(config, orch_api, builder_api, app_options, argv,
 
 @expose("scale")
 def scale(config, orch_api, builder_api, app_options, argv):
-    """Usage: gilliam scale [<SPEC>...]
-
+    """\
     Set scale parameters for procs.
+
+    Usage: gilliam scale [<SPEC>...]
 
     The SPEC is specified as a proc name and scale value, like
     `web=20`.  It is possible to increase or decrease the scale value
@@ -268,9 +292,10 @@ def scale(config, orch_api, builder_api, app_options, argv):
 
 @expose("config")
 def display_config(config, orch_api, builder_api, app_options, argv):
-    """Usage: gillaim config
-
+    """\
     Display current deployed config.
+
+    Usage: gilliam config
     """
     options = docopt(display_config.__doc__, argv=argv)
     current = orch_api.deploy()
@@ -280,11 +305,13 @@ def display_config(config, orch_api, builder_api, app_options, argv):
 
 @expose("deploy")
 def deploy(config, orch_api, builder_api, app_options, argv):
-    """Usage: gilliam deploy [options] [BUILD] [CONFIG...]
+    """\
+    Deploy a new build and configuration.
+
+    Usage: gilliam deploy [options] [BUILD] [CONFIG...]
 
     Options:
         -m, --message <message>   Deploy message
-
     """
     options = docopt(deploy.__doc__, argv=argv)
     argv = filter(None, [options['BUILD']] + options['CONFIG'])
@@ -314,10 +341,22 @@ def deploy(config, orch_api, builder_api, app_options, argv):
 
 
 @expose("help")
-def help(app_options, argv):
-    """."""
-    # FIXME: todo.
-    print "Help", args
+def help(config, orch_api, builder_api, app_options, argv,
+         stdout=sys.stdout):
+    """\
+    Display help for a command.
+
+    Usage: gilliam help [COMMAND]
+    """
+    options = docopt(help.__doc__, argv=argv)
+    if not options['COMMAND']:
+        stdout.write(dedent(__doc__))
+    elif not options['COMMAND'] in COMMANDS:
+        sys.exit("gilliam: help: %s: no such command" % (
+                options['COMMAND'],))
+    else:
+        command = COMMANDS[options['COMMAND']]
+        stdout.write(dedent(command.__doc__))
 
 
 def main():

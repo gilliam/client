@@ -14,26 +14,29 @@ instance.
 
 # Installation
 
-To be written.
+It has only been tested on Ubuntu 12.04.  It is recommended that you
+install in a virtual environment (`virtualenv`) rather than risking
+your systems python installation:
+
+    $ git clone git@github.com:gilliam/client.git
+    $ cd client
+    $ virtualenv .
+    $ ./bin/pip install -r requirements.txt
+    $ ./bin/python setup.py install
+
+If you activate the virtual environment you should now be able to
+execute the `gilliam` tool.
+
+Copy the example config file to your home directory:
+
+    $ cp example.conf ~/.gilliam
 
 # Config Files
 
-There's a configuration file called `.gilliam` that lives in your
-home directory.  This is a YAML file that defines where different
-components of Gilliam can be located.  Below is an example file:
-
-    orchestrator:
-      host: localhost
-      port: 8000
-    builder:
-      host: localhost
-      port: 8001
-
-There's also a *app file* that specified which app the current
-environment is attached to.  This allows you to run the gilliam
-command-line tool without specifying what app to manage.  This file,
-called `.gilliam.app` lives in some directory where you normally run
-`gilliam` from.  For example, the root of your app source tree.
+There's a configuration file called `.gilliam` that lives in your home
+directory.  This is a YAML file that defines where different
+components of Gilliam can be located.  Check the `example.conf`
+example file.
 
 # Basic Commands
 
@@ -42,18 +45,13 @@ implemented.  Work in progress, as usual.
 
 ## Create an Application
 
-This command creates a new "application" in the orchestrator.  You
-give it a name (that must be unique) and then a URL where the code can
-be found.
+This command creates a new "app" in the orchestrator.  You give it a
+name (that must be unique) and then a URL where the code can be found.
 
-    $ gilliam create example-app https://github.com/gilliam/python-example.git
+    $ gilliam create python-example https://github.com/gilliam/python-example.git
 
 This does not build anything.  It just registers the application and
 the source URL for future use.
-
-This command sets the *app file* `.gilliam.app` in the current
-directory to point to the newly created app.
-
 
 ## Building an Image
 

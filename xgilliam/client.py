@@ -37,13 +37,13 @@ from docopt import docopt
 import json
 import os.path
 import requests
+from fnmatch import fnmatch
 import sys
 from textwrap import dedent
 import yaml
+from urlparse import urljoin
 
-
-def urlchild(base_url, *args):
-    return base_url + ''.join([('/%s' % arg) for arg in args])
+from xgilliam.util import from_now, format_timedelta, urlchild
 
 
 COMMANDS = {}
@@ -227,6 +227,33 @@ class API(object):
         else:
             return response.json()
 
+    def procs(self, proc_name):
+        url = urlchild(self.config.app_url, 'proc', proc_name)
+        while True:
+            response = self._get_json(url)
+            for item in response['items']:
+                yield item
+            if not response['_links'].get('next'):
+                break
+            url = urljoin(url, response['_links']['next'])
+
+    def _interact(self, method, *parts, **kwargs):
+        try:
+            callable = getattr(self.requests, method)
+            response = callable(urlchild(*parts), **kwargs)
+            response.raise_for_status()
+        except:
+            raise
+        else:
+            if int(response.headers['content-length']):
+                return response.json()
+            else:
+                return {}
+
+    def restart_proc(self, proc_name, proc_id):
+        self._interact('delete', self.config.app_url, 'proc',
+                       proc_name, proc_id)
+
 
 @expose("create")
 def create(config, orch_api, builder_api, app_options, argv):
@@ -338,6 +365,39 @@ def deploy(config, orch_api, builder_api, app_options, argv):
     message = options['--message'] or ('build %s%s' % (
             build_name, (' with config changes' if len(argv) else '')))
     orch_api.create_deploy(build_name, image, pstable, app_config, message)
+
+
+@expose("ps")
+def ps(config, orch_api, builder_api, app_options, argv):
+    """\
+    Show procs and their status.
+
+    Usage: gilliam ps [options] [FILTER]
+    """
+    options = docopt(ps.__doc__, argv=argv)
+    current = orch_api.deploy()
+    for proc_name, command in current['pstable'].items():
+        for proc in orch_api.procs(proc_name):
+            full_name = '%s.%s' % (proc_name, proc['id'])
+            if options['FILTER'] and not fnmatch(full_name,
+                                                 options['FILTER']):
+                continue
+            print "%s state %s (since %s ago) on host %s port %s" % (
+                full_name, proc['state'],
+                format_timedelta(from_now(proc['changed_at'])),
+                proc['host'], str(proc['port']) if proc['port'] else 'none')
+
+
+@expose("restart")
+def restart(config, orch_api, builder_api, app_options, argv):
+    """\
+    Restart a specific proc.
+
+    Usage: gilliam restart [options] NAME
+    """
+    options = docopt(restart.__doc__, argv=argv)
+    proc_name, proc_id = options['NAME'].split('.', 1)
+    orch_api.restart_proc(proc_name, proc_id)
 
 
 @expose("help")

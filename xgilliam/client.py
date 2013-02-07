@@ -405,8 +405,8 @@ def ps(config, orch_api, builder_api, app_options, argv):
             if options['FILTER'] and not fnmatch(full_name,
                                                  options['FILTER']):
                 continue
-            print "%s state %s (since %s ago) on host %s port %s" % (
-                full_name, proc['state'],
+            print "%s build %s state %s (since %s ago) on host %s port %s" % (
+                full_name, proc['deploy']['build'], proc['state'],
                 format_timedelta(from_now(proc['changed_at'])),
                 proc['host'], str(proc['port']) if proc['port'] else 'none')
 

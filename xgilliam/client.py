@@ -330,6 +330,29 @@ def display_config(config, orch_api, builder_api, app_options, argv):
         print "%s=%r" % (k, str(v))
 
 
+@expose("bootstrap")
+def bootstrap(config, orch_api, builder_api, app_options, argv):
+    """\
+    Do an initial deployment for an app.
+
+    Usage: gilliam bootstrap [options] <BUILD> [CONFIG...]
+
+    Options:
+        -m, --message <message>   Deploy message
+    """
+    options = docopt(bootstrap.__doc__, argv=argv)
+    app_config = {}
+    for pair in options['CONFIG']:
+        name, value = pair.split('=', 1)
+        app_config[name] = value
+    build_name = options['<BUILD>']
+    build = builder_api.build(config.app, build_name)
+    pstable = build['pstable']
+    image = build['image']
+    message = options['--message'] or ('bootstrap build %s' % (build_name,))
+    orch_api.create_deploy(build_name, image, pstable, app_config, message)
+
+
 @expose("deploy")
 def deploy(config, orch_api, builder_api, app_options, argv):
     """\

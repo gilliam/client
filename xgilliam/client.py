@@ -15,19 +15,18 @@
 """\
 Client tool for Gilliam.
 
-Usage: gilliam [--version] <command> [<args>...]
+Usage: gilliam [options] <command> [<args>...]
 
 Options:
     -h, --help  Display this help text and exit.
     --version   Show version and quit.
+    --app <APP> Specify specific app.
 
 Commands:
-    build       Issue a new build
-    deploy      Deploy a new build or configuration
+    create      Create a new application
+    ps          Display processes of app
     config      Show current configuration
-    status      Display current status for application
-    create      Create a new application.
-    attach      Attach environment to existing application
+    scale       Set scale for a release
 
 See `gilliam help <command>` for more information on a specific
 command.
@@ -37,13 +36,19 @@ from docopt import docopt
 import json
 import os.path
 import requests
+import subprocess
+import yaml
 from fnmatch import fnmatch
 import sys
 from textwrap import dedent
 import yaml
+import os
 from urlparse import urljoin
+import dateutil.parser
 
-from xgilliam.util import from_now, format_timedelta, urlchild
+
+from xgilliam.util import from_now, format_timedelta, urlchild, pretty_date
+from xgilliam.api import SchedulerAPI, BuilderAPI
 
 
 COMMANDS = {}
@@ -94,11 +99,23 @@ class Config(object):
     def app(self):
         return self._read_attach()
 
+    def set_app(self, app):
+        self._attach = app
+
+    def scheduler(self):
+        return SchedulerAPI(self, requests)
+
+    def builder(self):
+        return BuilderAPI(self._builder_url(), requests)
+
     def set_app(self, name):
         """Set C{name} as active app."""
         with open(self.ATTACH, 'wb') as fp:
             fp.write(name)
         self._attach = name
+
+    def _builder_url(self):
+        return os.getenv("GILLIAM_BUILDER")
 
     @property
     def app_url(self):
@@ -113,319 +130,202 @@ class Config(object):
         return 'http://%s:%d' % (self._config['orchestrator']['host'],
                                   self._config['orchestrator']['port'])
 
-    @property
-    def builder_url(self):
-        self._read_config()
-        return 'http://%s:%d' % (self._config['builder']['host'],
-                                  self._config['builder']['port'])
-
-
-class BuilderAPI(object):
-    """Abstraction that provides us with an API for building app
-    images.
-    """
-
-    def __init__(self, config, requests):
-        self.config = config
-        self.requests = requests
-
-    def _get_json(self, *parts):
-        try:
-            response = self.requests.get(urlchild(*parts))
-            response.raise_for_status()
-        except:
-            raise
-        else:
-            return response.json()
-
-    def create_build(self, app, repository, commit, stdout):
-        """Create a new build with the given parameters."""
-        request = {'repository': repository}
-        if commit is not None:
-            request['commit'] = commit
-        response = self.requests.post(urlchild(self.config.builder_url,
-            'build', app), data=json.dumps(request), stream=True)
-        for data in response.iter_content():
-            stdout.write(data)
-        return self._get_json(response.headers['location'])
-
-    def build(self, app, name):
-        """Return build."""
-        return self._get_json(urlchild(self.config.builder_url,
-            'build', app, name))
-
-
-class API(object):
-    """Abstraction that provides functions to talk to the orchestrator
-    using its REST API.
-    """
-
-    def __init__(self, config, requests):
-        self.config = config
-        self.requests = requests
-
-    def _get_json(self, *parts):
-        try:
-            response = self.requests.get(urlchild(*parts))
-            response.raise_for_status()
-        except:
-            raise
-        else:
-            return response.json()
-
-    def _put_json(self, data, *parts):
-        """Store data using a PUT request."""
-        try:
-            response = self.requests.put(urlchild(*parts),
-                                         data=json.dumps(data))
-            response.raise_for_status()
-        except:
-            raise
-
-    def app(self):
-        """Return the current app."""
-        return self._get_json(self.config.app_url)
-
-    def create_app(self, name, repository, text):
-        """Create a new app with the given name."""
-        request = {'name': name, 'repository': repository,
-                   'text': text}
-        try:
-            response = self.requests.post(urlchild(
-                    self.config.orch_url, 'app'),
-                    data=json.dumps(request))
-            response.raise_for_status()
-        except:
-            raise
-        else:
-            return response.json()
-
-    def scale(self):
-        """Return current scale values."""
-        return self._get_json(self.config.app_url, 'scale')
-
-    def set_scale(self, scale):
-        """Set scale values."""
-        self._put_json(scale, self.config.app_url, 'scale')
-
-    def deploy(self):
-        """Return current deploy as a C{dict}."""
-        return self._get_json(self.config.app_url, 'deploy', 'latest')
-
-    def create_deploy(self, build, image, pstable, app_config, text):
-        """Create a new deploy."""
-        try:
-            request = {'build': build, 'image': image,
-                       'pstable': pstable, 'config': app_config,
-                       'text': text}
-            response = self.requests.post(urlchild(
-                self.config.app_url, 'deploy'),
-                data=json.dumps(request))
-            response.raise_for_status()
-        except:
-            raise
-        else:
-            return response.json()
-
-    def procs(self, proc_name):
-        url = urlchild(self.config.app_url, 'proc', proc_name)
-        while True:
-            response = self._get_json(url)
-            for item in response['items']:
-                yield item
-            if not response['_links'].get('next'):
-                break
-            url = urljoin(url, response['_links']['next'])
-
-    def _interact(self, method, *parts, **kwargs):
-        try:
-            callable = getattr(self.requests, method)
-            response = callable(urlchild(*parts), **kwargs)
-            response.raise_for_status()
-        except:
-            raise
-        else:
-            if int(response.headers['content-length']):
-                return response.json()
-            else:
-                return {}
-
-    def restart_proc(self, proc_name, proc_id):
-        self._interact('delete', self.config.app_url, 'proc',
-                       proc_name, proc_id)
-
 
 @expose("create")
-def create(config, orch_api, builder_api, app_options, argv):
+def create(config, app_options, argv):
     """\
-    Usage: gilliam create <NAME> <REPOSITORY> [DESCRIPTION]
+    Usage: gilliam create <NAME> [DESCRIPTION]
 
     Create a new app called NAME with code living at REPOSITORY.
     """
     options = docopt(create.__doc__, argv=argv)
-    current = orch_api.create_app(options['<NAME>'], options['<REPOSITORY>'],
+    current = orch_api.create_app(options['<NAME>'],
         options['DESCRIPTION'] or options['<NAME>'],)
     config.set_app(options['<NAME>'])
 
 
-@expose("build")
-def build(config, orch_api, builder_api, app_options, argv,
-          stdout=sys.stdout):
+@expose("releases")
+def releases(config, app_options, argv):
     """\
-    Issue a new build.
+    Show releases of the app.
 
-    Usage: gilliam build [--repository REPOSITORY] [COMMIT]
+    Usage: gilliam releases
     """
-    options = docopt(build.__doc__, argv=argv)
-    if not options['--repository']:
-        app = orch_api.app()
-        options['--repository'] = app['repository']
+    options = docopt(releases.__doc__, argv=argv)
 
-    current = builder_api.create_build(config.app, options['--repository'],
-        options['COMMIT'], stdout)
-
-    print "done: build is called '%s'." % (current['name'],)
+    for release in config.scheduler().releases():
+        dt = dateutil.parser.parse(release['timestamp'])
+        print "v%-6d %-20s %s" % (release['version'],
+                                  pretty_date(dt),
+                                  release['text'])
 
 
-@expose("scale")
-def scale(config, orch_api, builder_api, app_options, argv):
+@expose("release")
+def do_release(config, app_options, argv):
     """\
-    Set scale parameters for procs.
+    Release.
 
-    Usage: gilliam scale [<SPEC>...]
-
-    The SPEC is specified as a proc name and scale value, like
-    `web=20`.  It is possible to increase or decrease the scale value
-    using a `+` or `-` prefix.  For example `web=+2` will increase the
-    scale for the web proc with two instances.
-    """
-    options = docopt(scale.__doc__, argv=argv)
-    deploy = orch_api.deploy()
-    current = orch_api.scale()
-    if options['<SPEC>']:
-        for spec in options['<SPEC>']:
-            proc, value = spec.split('=', 1)
-            if proc not in deploy['pstable']:
-                sys.exit("%s: %s: no such proc according to deploy" % (
-                        argv[0], proc))
-            if value[0] in ('+', '-'):
-                current[proc] = max(0, current.get(proc, 0) + int(value))
-            else:
-                current[proc] = int(value)
-        orch_api.set_scale(current)
-    for proc, value in current.items():
-        print "%s=%d" % (proc, value)
-
-
-@expose("config")
-def display_config(config, orch_api, builder_api, app_options, argv):
-    """\
-    Display current deployed config.
-
-    Usage: gilliam config
-    """
-    options = docopt(display_config.__doc__, argv=argv)
-    current = orch_api.deploy()
-    for k, v in current['config'].items():
-        print "%s=%r" % (k, str(v))
-
-
-@expose("bootstrap")
-def bootstrap(config, orch_api, builder_api, app_options, argv):
-    """\
-    Do an initial deployment for an app.
-
-    Usage: gilliam bootstrap [options] <BUILD> [CONFIG...]
+    Usage: gilliam release [options] <IMAGE> 
 
     Options:
-        -m, --message <message>   Deploy message
+        -m, --message MESSAGE  Message describing release
+        -b, --build BUILD      Which build
+        -P, --procfile PATH    Read process types from here.
     """
-    options = docopt(bootstrap.__doc__, argv=argv)
-    app_config = {}
-    for pair in options['CONFIG']:
-        name, value = pair.split('=', 1)
-        app_config[name] = value
-    build_name = options['<BUILD>']
-    build = builder_api.build(config.app, build_name)
-    pstable = build['pstable']
-    image = build['image']
-    message = options['--message'] or ('bootstrap build %s' % (build_name,))
-    orch_api.create_deploy(build_name, image, pstable, app_config, message)
+    options = docopt(do_release.__doc__, argv=argv)
+
+    scheduler = config.scheduler()
+    release = scheduler.release()
+
+    if not options['--procfile']:
+        sys.exit("Must specify path to Procfile.")
+    with open(options['--procfile']) as fp:
+        pstable = yaml.load(fp)
+
+    release = scheduler.create_release(
+        options.get('--message', 'none'),
+        options.get('--build', 'unknown'),
+        options['<IMAGE>'],
+        pstable,
+        release['config'] if release else {})
+    print "v%d released" % (release['version'],)
+
+
+def read_in_chunks(infile, chunk_size=1024*64):
+    c = 0
+    while True:
+        chunk = infile.read(chunk_size)
+        c += len(chunk)
+        if chunk:
+            yield chunk
+        else:
+            break
+    print "READ", c
 
 
 @expose("deploy")
-def deploy(config, orch_api, builder_api, app_options, argv):
+def deploy(config, app_options, argv, stdout=sys.stdout):
     """\
-    Deploy a new build and configuration.
+    Deploy a new software version.
 
-    Usage: gilliam deploy [options] [BUILD] [CONFIG...]
+    Usage: gilliam deploy [options]
 
     Options:
-        -m, --message <message>   Deploy message
+        -m, --message MESSAGE  Message describing release
+        -b, --build BUILD      Which build    
     """
     options = docopt(deploy.__doc__, argv=argv)
-    argv = filter(None, [options['BUILD']] + options['CONFIG'])
-    current = orch_api.deploy()
-    if not argv:
-        print "deploy %d: %s at %s: %s" % (current['id'],
-            current['build'], current['when'], current['text'])
-        return
-    elif not '=' in argv[0]:
-        options['BUILD'], argv = argv[0], argv[1:]
-    else:
-        options['BUILD'] = None
-    build_name = options['BUILD'] or current['build']
-    # update config with new settings if needed:
-    app_config = current['config']
-    for pair in argv:
-        name, value = pair.split('=', 1)
-        app_config[name] = value
-
-    # get hold of build information from the builder.
-    build = builder_api.build(config.app, build_name)
-    pstable = build['pstable']
-    image = build['image']
-    message = options['--message'] or ('build %s%s' % (
-            build_name, (' with config changes' if len(argv) else '')))
-    orch_api.create_deploy(build_name, image, pstable, app_config, message)
+    if not options['--build']:
+        options['--build'] = subprocess.check_output(
+            ["git", "describe", "--always", "--tags"]).strip()
+    if not options['--message']:
+        options['--message'] = 'Deploy %s' % (options['--build'],)
+    request = {'app': config.app, 'commit': options['--build'],
+               'text': options['--message']}
+    # stream data from "git archive" straigth into the request.
+    process = subprocess.Popen(["git", "archive", "--format=tar", "HEAD"],
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT)
+    for output in config.builder().deploy(process.stdout, config.app,
+                                          options['--build'],
+                                          options['--message']):
+        stdout.write(output)
 
 
 @expose("ps")
-def ps(config, orch_api, builder_api, app_options, argv):
+def ps(config, app_options, argv):
     """\
     Show procs and their status.
 
-    Usage: gilliam ps [options] [FILTER]
+    Usage: gilliam ps
     """
     options = docopt(ps.__doc__, argv=argv)
-    current = orch_api.deploy()
-    for proc_name, command in current['pstable'].items():
-        for proc in orch_api.procs(proc_name):
-            full_name = '%s.%s' % (proc_name, proc['id'])
-            if options['FILTER'] and not fnmatch(full_name,
-                                                 options['FILTER']):
-                continue
-            print "%s build %s state %s (since %s ago) on host %s port %s" % (
-                full_name, proc['deploy']['build'], proc['state'],
-                format_timedelta(from_now(proc['changed_at'])),
-                proc['host'], str(proc['port']) if proc['port'] else 'none')
+    scheduler = config.scheduler()
+
+    for proc in scheduler.procs():
+        print "%s v%d state %s (%s) on host %s port %s" % (
+            proc['name'], proc['release']['version'], proc['state'],
+            pretty_date(dateutil.parser.parse(proc['changed_at'])),
+            proc['host'], str(proc['port']) if proc['port'] else 'none')
+
+
+@expose("scale")
+def scale(config, app_options, argv):
+    """\
+    Set scale parameters for a release.
+
+    Usage: gilliam scale [<VERSION> [<SPEC>...]]
+    """
+    def _format_scale(scale):
+        return ' '.join([('%s=%d' % (pt, n)) for pt, n in scale.items()])
+
+    options = docopt(scale.__doc__, argv=argv)
+    scheduler = config.scheduler()
+    if options['<VERSION>']:
+        if not options['<VERSION>'].startswith("v"):
+            sys.exit("%s: invalid version" % (argv[0],))
+        version = options['<VERSION>'][1:]
+        release = scheduler.release(version)
+        current = release['scale'].copy()
+        if options['<SPEC>']:
+            for spec in options['<SPEC>']:
+                proc, value = spec.split('=', 1)
+                if proc not in release['pstable']:
+                    sys.exit("%s: %s: no such proc according to deploy" % (
+                            argv[0], proc))
+                if value[0] in ('+', '-'):
+                    current[proc] = max(0, current.get(proc, 0) + int(value))
+                else:
+                    current[proc] = int(value)
+            scheduler.set_scale(version, current)
+    else:
+        for release in scheduler.releases():
+            if release['scale']:
+                print "v%d %s" % (release['version'],
+                                  _format_scale(release['scale']))
+
+
+@expose("config")
+def display_config(config, app_options, argv):
+    """\
+    Change or display configuration.
+
+    Usage: gilliam config [CONFIG...]
+    """
+    options = docopt(display_config.__doc__, argv=argv)
+    scheduler = config.scheduler()
+    release = scheduler.release()
+    if release is None:
+        sys.exit("No release.")
+    if options['CONFIG']:
+        app_config = release['config'].copy()
+        for pair in options['CONFIG']:
+            name, value = pair.split('=', 1)
+            app_config[name] = value
+        release = scheduler.create_release('Config change', 
+                                           release['build'],
+                                           release['image'],
+                                           release['pstable'],
+                                           app_config)
+        print "v%d released" % (release['version'],)
+    else:
+        for k, v in release['config'].items():
+            print "%s=%r" % (k, v) 
 
 
 @expose("restart")
-def restart(config, orch_api, builder_api, app_options, argv):
+def restart(config, app_options, argv):
     """\
     Restart a specific proc.
 
-    Usage: gilliam restart [options] NAME
+    Usage: gilliam restart NAME
     """
     options = docopt(restart.__doc__, argv=argv)
-    proc_name, proc_id = options['NAME'].split('.', 1)
-    orch_api.restart_proc(proc_name, proc_id)
+    config.scheduler().restart_proc(options['NAME'])
 
 
 @expose("help")
-def help(config, orch_api, builder_api, app_options, argv,
-         stdout=sys.stdout):
+def help(config, app_options, argv, stdout=sys.stdout):
     """\
     Display help for a command.
 
@@ -448,10 +348,9 @@ def main():
     if command not in COMMANDS:
         sys.exit("Unknown command")
     config = Config()
-    orch_api = API(config, requests)
-    builder_api = BuilderAPI(config, requests)
+    if options['--app']:
+        config.set_app(options['--app'])
     try:
-        COMMANDS[command](config, orch_api, builder_api, options,
-                          [command] + options['<args>'])
+        COMMANDS[command](config, options, [command] + options['<args>'])
     except RuntimeError, re:
         sys.exit(str(re))

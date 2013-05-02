@@ -1,34 +1,29 @@
-# The Gilliam Client
-
-Gilliam is a platform for deploying your [12 factor
-apps](http://12factor.net/), and this is command-line client tool
-allowing your to create and deploy apps.
+This is the command-line client for Gilliam, a platform for 12 factor
+applications.
 
 # Installation
 
-It has only been tested on Ubuntu 12.04.  It is recommended that you
-install in a virtual environment (`virtualenv`) rather than risking
-your systems python installation:
+Note: As of now, it has only been tested on Ubuntu 12.04. 
 
-    $ git clone git@github.com:gilliam/client.git
-    $ cd client
-    $ virtualenv .
-    $ ./bin/pip install -r requirements.txt
-    $ ./bin/python setup.py install
+It is recommended that you install in a virtual environment
+(`virtualenv`) rather than risking your systems python installation:
+
+    virtualenv .
+    ./bin/pip install -r requirements.txt
+    ./bin/python setup.py install
 
 If you activate the virtual environment you should now be able to
 execute the `gilliam` tool.
 
-Copy the example config file to your home directory:
+Set up your environment:
 
-    $ cp example.conf ~/.gilliam
+    export GILLIAM_SCHEDULER=http://localhost:8000/
+    export GILLIAM_BUILDER=http://localhost:8001/
 
-# Config Files
+Substitute `localhost` for the hosts where you have the other
+components running.
 
-There's a configuration file called `.gilliam` that lives in your home
-directory.  This is a YAML file that defines where different
-components of Gilliam can be located.  Check the `example.conf`
-example file.
+You're wise to make these environment variables persistent.
 
 # Basic Commands
 
@@ -37,75 +32,75 @@ implemented.  Work in progress, as usual.
 
 ## Create an Application
 
-This command creates a new "app" in the orchestrator.  You give it a
-name (that must be unique) and then a URL where the code can be found.
+This command creates a new application.  You give it a name (that must
+be unique) and an optional description.
 
-    $ gilliam create python-example https://github.com/gilliam/python-example.git
+    $ gilliam create python-example
 
-This does not build anything.  It just registers the application and
-the source URL for future use.
+This does not build anything.  It just registers the application.
 
-## Building an Image
-
-Before you can do your first deploy you must build your application
-code into something that can be deployed.  Simply issue the `build`
-command to build your `master` branch from the repository you
-specified when you created the app using the *create* command.
-
-    $ gilliam build
-    ...
-    done: build is called '6dc2f9e'.
-    
-
-It is possible to specify a commit (tag, branch or hash) if you want
-to build something special from the repository:
-
-    $ gilliam build hot-fix-branch-2
-    ...
-    done: build is called 'hot-fix-branch-2'.
-
-Each build receive a name. Use this name when you refer to your build
-when you want to deploy it.
 
 ## Deploying
 
-A deploy is the union of a build and configuration.  It is not
-possible to change build without doing a new deploy and the same is
-true for the configuration.
+The `gilliam deploy` command deploys HEAD of your git repository to
+the scheduler, via the build server. 
 
-The basics of the deploy command is simple:
+    $ gilliam deploy
+    -----> Receiving app bundle...
+    -----> Python app detected
+    ...
+    -----> App image size -> 28M
+    -----> Deploying release ... v1 released
+    
 
-    $ gilliam deploy [build] [config params]
+## Config
 
-So for example, to deploy build called `6dc2f9e` with two config
-parameters; `POOL_SIZE=10` and `CONN_LIMIT=100`, issue the following
-command:
+A release is the combination of software and configuration.  It is
+not possible to change configuration without doing a new release.
 
-    $ gilliam deploy 6dc2f9e POOL_SIZE=10 CONN_LIMIT=100
+The basics for altering the configuration:
+
+    $ gilliam config [config params]
+
+So for example, to deploy a release build two config parameters;
+`POOL_SIZE=10` and `CONN_LIMIT=100`, issue the following command:
+
+    $ gilliam config POOL_SIZE=10 CONN_LIMIT=100
 
 If something is already deployed then those settings will be inherited
-to the next invokation of `deploy`.  Say that you just wanna change
+to the next invokation of `config`.  Say that you just wanna change
 the `POOL_SIZE` setting to 16:
 
-    $ gilliam deploy POOL_SIZE=16
+    $ gilliam config POOL_SIZE=16
 
-This will result in a new deploy still with build `6dc2f9e` and
-`CONN_LIMIT` set to 100, but now with a pool size of 16.
+This will result in a new release still with the same software version
+and `CONN_LIMIT` set to 100, but now with a pool size of 16.
 
-Issuing the command without any parameters will display some
-information about the current deploy.  Use the `gilliam config`
-command to display the active configuration.
 
-## Setting Scale Values for an Application
+## Scaling
 
-The number of instances for an app process is controlled using the
+*scaling factors* are set on releaes to spawn processes of that
+release.  Having the factors on releases rather than on the
+application allows us to do partial rollout.  
+
+The number of instances for process type is controlled using the
 `scale` command:
 
-    $ gilliam scale web=4
+    $ gilliam scale v1 web=4
 
-Besides setting absolute values it is possible to give a delta to the
-current scale.
+You can display the current scaling factors by issuing `scale` without
+any arguments:
 
-    $ gilliam scale web=+1
+    $ gilliam scale
+    v1 web=4
 
-(It is of course possible to give negative deltas.)
+
+## Showing Processes
+
+When you have set your scaling factors the scheduler will start to
+create process instances for you.  To get a list of these processes
+you can run the `ps` command:
+
+    $ gilliam ps
+    web.EXwuYvDyXbASobnNwyRmNJ v1 state running (a minute ago) on host localhost port 10000
+

@@ -35,17 +35,10 @@ command.
 """
 
 from docopt import docopt
-import json
-import os.path
-import requests
 import subprocess
-import yaml
-from fnmatch import fnmatch
 import sys
 from textwrap import dedent
 import yaml
-import os
-from urlparse import urljoin
 import dateutil.parser
 
 from xgilliam.config import Config
@@ -84,8 +77,6 @@ def releases(config, app_options, argv):
 
     Usage: gilliam releases
     """
-    options = docopt(releases.__doc__, argv=argv)
-
     for release in config.scheduler().releases(config.app):
         dt = dateutil.parser.parse(release['timestamp'])
         print "v%-6d %-20s %s" % (release['version'],
@@ -142,8 +133,6 @@ def deploy(config, app_options, argv, stdout=sys.stdout):
             ["git", "describe", "--always", "--tags"]).strip()
     if not options['--message']:
         options['--message'] = 'Deploy %s' % (options['--build'],)
-    request = {'app': config.app, 'commit': options['--build'],
-               'text': options['--message']}
     # stream data from "git archive" straigth into the request.
     process = subprocess.Popen(["git", "archive", "--format=tar", "HEAD"],
                                stdout=subprocess.PIPE,
@@ -161,9 +150,7 @@ def ps(config, app_options, argv):
 
     Usage: gilliam ps
     """
-    options = docopt(ps.__doc__, argv=argv)
     scheduler = config.scheduler()
-
     for proc in scheduler.procs(config.app):
         print "%s v%d state %s (%s) on host %s port %s" % (
             proc['name'], proc['release']['version'], proc['state'],

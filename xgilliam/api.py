@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import json
-import requests
 from urlparse import urljoin
 
 from xgilliam.util import urlchild

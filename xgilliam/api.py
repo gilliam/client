@@ -16,7 +16,7 @@ import json
 import requests
 from urlparse import urljoin
 
-from xgilliam.util import from_now, format_timedelta, urlchild
+from xgilliam.util import urlchild
 
 
 class BuilderAPI(object):
@@ -42,9 +42,90 @@ class SchedulerAPI(object):
     using its REST API.
     """
 
-    def __init__(self, config, requests):
-        self.config = config
+    def __init__(self, endpoint, requests):
+        self.endpoint = endpoint
         self.requests = requests
+
+    def app(self, app):
+        """Return the current app."""
+        return self._get_json(urlchild(self.endpoint, 'app', app))
+
+    def create_app(self, name, text):
+        """Create a new app with the given name."""
+        request = {'name': name, 'text': text}
+        try:
+            response = self.requests.post(urlchild(self.endpoint, 'app'),
+                                          data=json.dumps(request))
+            response.raise_for_status()
+        except:
+            raise
+        else:
+            return response.json()
+
+    def create_release(self, app, text, build, image, pstable, app_config):
+        """Create a new release."""
+        try:
+            request = {'text': text, 'build': build, 'image': image,
+                       'pstable': pstable, 'config': app_config}
+            response = self.requests.post(urlchild(self.endpoint,
+                                                   'app', app, 'release'),
+                                          data=json.dumps(request))
+            response.raise_for_status()
+        except:
+            raise
+        else:
+            return response.json()
+
+    def set_scale(self, app, version, scale):
+        """Set scale values."""
+        self._put_json(scale, self.endpoint, 'app', app,
+                       'release', version, 'scale')
+
+    def releases(self, app):
+        """Iterate over releases."""
+        url = urlchild(self.endpoint, 'app', app, 'release')
+        while True:
+            response = self._get_json(url)
+            for item in response['items']:
+                yield item
+            if not response['links'].get('next'):
+                break
+            url = urljoin(url, response['links']['next'])
+
+    def release(self, app, version=None):
+        """Get a specific release or the latest release."""
+        if version is None:
+            releases = list(self.releases(app))
+            return releases[0] if releases else None
+        else:
+            url = urlchild(self.endpoint, 'app', app, 'release', version)
+            return self._get_json(url)
+
+    def procs(self, app):
+        url = urlchild(self.endpoint, 'app', app, 'proc')
+        while True:
+            response = self._get_json(url)
+            for item in response['items']:
+                yield item
+            if not response['links'].get('next'):
+                break
+            url = urljoin(url, response['links']['next'])
+
+    def restart_proc(self, app, proc_name):
+        self._interact('delete', self.endpoint, 'app', app, 'proc', proc_name)
+
+    def _interact(self, method, *parts, **kwargs):
+        try:
+            callable = getattr(self.requests, method)
+            response = callable(urlchild(*parts), **kwargs)
+            response.raise_for_status()
+        except:
+            raise
+        else:
+            if int(response.headers['content-length']):
+                return response.json()
+            else:
+                return {}
 
     def _get_json(self, *parts):
         try:
@@ -63,86 +144,3 @@ class SchedulerAPI(object):
             response.raise_for_status()
         except:
             raise
-
-    def app(self):
-        """Return the current app."""
-        return self._get_json(self.config.app_url)
-
-    def create_app(self, name, text):
-        """Create a new app with the given name."""
-        request = {'name': name, 'text': text}
-        try:
-            response = self.requests.post(urlchild(
-                    self.config.orch_url, 'app'),
-                    data=json.dumps(request))
-            response.raise_for_status()
-        except:
-            raise
-        else:
-            return response.json()
-
-    def create_release(self, text, build, image, pstable, app_config):
-        """Create a new release."""
-        try:
-            request = {'text': text, 'build': build, 'image': image,
-                       'pstable': pstable, 'config': app_config}
-            response = self.requests.post(urlchild(
-                self.config.app_url, 'release'),
-                data=json.dumps(request))
-            response.raise_for_status()
-        except:
-            raise
-        else:
-            return response.json()
-
-    def set_scale(self, version, scale):
-        """Set scale values."""
-        self._put_json(scale, self.config.app_url, 'release', version,
-                       'scale')
-
-    def releases(self):
-        """Iterate over releases."""
-        url = urlchild(self.config.app_url, 'release')
-        while True:
-            response = self._get_json(url)
-            for item in response['items']:
-                yield item
-            if not response['links'].get('next'):
-                break
-            url = urljoin(url, response['links']['next'])
-
-    def release(self, version=None):
-        """Get a specific release or the latest release."""
-        if version is None:
-            releases = list(self.releases())
-            return releases[0] if releases else None
-        else:
-            url = urlchild(self.config.app_url, 'release', version)
-            return self._get_json(url)
-
-    def procs(self):
-        url = urlchild(self.config.app_url, 'proc')
-        while True:
-            response = self._get_json(url)
-            for item in response['items']:
-                yield item
-            if not response['links'].get('next'):
-                break
-            url = urljoin(url, response['links']['next'])
-
-    def restart_proc(self, proc_name):
-        self._interact('delete', self.config.app_url, 'proc',
-                       proc_name)
-    def _interact(self, method, *parts, **kwargs):
-        try:
-            callable = getattr(self.requests, method)
-            response = callable(urlchild(*parts), **kwargs)
-            response.raise_for_status()
-        except:
-            raise
-        else:
-            if int(response.headers['content-length']):
-                return response.json()
-            else:
-                return {}
-

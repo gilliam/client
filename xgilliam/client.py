@@ -24,9 +24,11 @@ Options:
 
 Commands:
     create      Create a new application
-    ps          Display processes of app
-    config      Show current configuration
+    deploy      Deploy a new release
+    releases    Display releases
     scale       Set scale for a release
+    ps          Display processes of app
+    config      Set or show current configuration
 
 See `gilliam help <command>` for more information on a specific
 command.
@@ -46,9 +48,8 @@ import os
 from urlparse import urljoin
 import dateutil.parser
 
-
-from xgilliam.util import from_now, format_timedelta, urlchild, pretty_date
-from xgilliam.api import SchedulerAPI, BuilderAPI
+from xgilliam.config import Config
+from xgilliam.util import pretty_date, check_output
 
 
 COMMANDS = {}
@@ -62,75 +63,6 @@ def expose(name):
     return decl
 
 
-class Config(object):
-    """Wraps our configuration files.
-
-    There are two files.  One YAML file called `.gilliam` living in
-    the home directory.  This file contains pointers to the
-    orchestrator and the build server.  The second file `.gilliam.app`
-    is just a simple text file with the name of the current app.
-    """
-
-    CONF = '.gilliam'
-    ATTACH = '.gilliam.app'
-
-    def __init__(self):
-        self._config = None
-        self._attach = None
-
-    def _read_config(self):
-        for path in (self.CONF, os.path.expanduser('~/' + self.CONF)):
-            if os.path.exists(path):
-                with open(path) as fp:
-                    self._config = yaml.load(fp)
-                break
-        else:
-            raise RuntimeError("No config file")
-    
-    def _read_attach(self):
-        if self._attach is None:
-            if not os.path.exists(self.ATTACH):
-                raise RuntimeError("Not attached to an app")
-            with open(self.ATTACH) as fp:
-                self._attach = fp.read().strip()
-        return self._attach
-
-    @property
-    def app(self):
-        return self._read_attach()
-
-    def set_app(self, app):
-        self._attach = app
-
-    def scheduler(self):
-        return SchedulerAPI(self, requests)
-
-    def builder(self):
-        return BuilderAPI(self._builder_url(), requests)
-
-    def set_app(self, name):
-        """Set C{name} as active app."""
-        with open(self.ATTACH, 'wb') as fp:
-            fp.write(name)
-        self._attach = name
-
-    def _builder_url(self):
-        return os.getenv("GILLIAM_BUILDER")
-
-    @property
-    def app_url(self):
-        """Return base URL to the attached app in the orchestrator."""
-        attach = self._read_attach()
-        return urlchild(self.orch_url, 'app', attach)
-        
-    @property
-    def orch_url(self):
-        """Return base URL to the orchestrator."""
-        self._read_config()
-        return 'http://%s:%d' % (self._config['orchestrator']['host'],
-                                  self._config['orchestrator']['port'])
-
-
 @expose("create")
 def create(config, app_options, argv):
     """\
@@ -139,9 +71,10 @@ def create(config, app_options, argv):
     Create a new app called NAME with code living at REPOSITORY.
     """
     options = docopt(create.__doc__, argv=argv)
-    current = orch_api.create_app(options['<NAME>'],
-        options['DESCRIPTION'] or options['<NAME>'],)
-    config.set_app(options['<NAME>'])
+    config.scheduler().create_app(options['<NAME>'],
+                                  options['DESCRIPTION']
+                                  or options['<NAME>'],)
+    config.write_app(options['<NAME>'])
 
 
 @expose("releases")
@@ -153,7 +86,7 @@ def releases(config, app_options, argv):
     """
     options = docopt(releases.__doc__, argv=argv)
 
-    for release in config.scheduler().releases():
+    for release in config.scheduler().releases(config.app):
         dt = dateutil.parser.parse(release['timestamp'])
         print "v%-6d %-20s %s" % (release['version'],
                                   pretty_date(dt),
@@ -175,7 +108,7 @@ def do_release(config, app_options, argv):
     options = docopt(do_release.__doc__, argv=argv)
 
     scheduler = config.scheduler()
-    release = scheduler.release()
+    release = scheduler.release(config.app)
 
     if not options['--procfile']:
         sys.exit("Must specify path to Procfile.")
@@ -183,24 +116,13 @@ def do_release(config, app_options, argv):
         pstable = yaml.load(fp)
 
     release = scheduler.create_release(
+        config.app,
         options.get('--message', 'none'),
         options.get('--build', 'unknown'),
         options['<IMAGE>'],
         pstable,
         release['config'] if release else {})
     print "v%d released" % (release['version'],)
-
-
-def read_in_chunks(infile, chunk_size=1024*64):
-    c = 0
-    while True:
-        chunk = infile.read(chunk_size)
-        c += len(chunk)
-        if chunk:
-            yield chunk
-        else:
-            break
-    print "READ", c
 
 
 @expose("deploy")
@@ -216,7 +138,7 @@ def deploy(config, app_options, argv, stdout=sys.stdout):
     """
     options = docopt(deploy.__doc__, argv=argv)
     if not options['--build']:
-        options['--build'] = subprocess.check_output(
+        options['--build'] = check_output(
             ["git", "describe", "--always", "--tags"]).strip()
     if not options['--message']:
         options['--message'] = 'Deploy %s' % (options['--build'],)
@@ -242,7 +164,7 @@ def ps(config, app_options, argv):
     options = docopt(ps.__doc__, argv=argv)
     scheduler = config.scheduler()
 
-    for proc in scheduler.procs():
+    for proc in scheduler.procs(config.app):
         print "%s v%d state %s (%s) on host %s port %s" % (
             proc['name'], proc['release']['version'], proc['state'],
             pretty_date(dateutil.parser.parse(proc['changed_at'])),
@@ -265,7 +187,7 @@ def scale(config, app_options, argv):
         if not options['<VERSION>'].startswith("v"):
             sys.exit("%s: invalid version" % (argv[0],))
         version = options['<VERSION>'][1:]
-        release = scheduler.release(version)
+        release = scheduler.release(config.app, version)
         current = release['scale'].copy()
         if options['<SPEC>']:
             for spec in options['<SPEC>']:
@@ -277,9 +199,9 @@ def scale(config, app_options, argv):
                     current[proc] = max(0, current.get(proc, 0) + int(value))
                 else:
                     current[proc] = int(value)
-            scheduler.set_scale(version, current)
+            scheduler.set_scale(config.app, version, current)
     else:
-        for release in scheduler.releases():
+        for release in scheduler.releases(config.app):
             if release['scale']:
                 print "v%d %s" % (release['version'],
                                   _format_scale(release['scale']))
@@ -294,7 +216,7 @@ def display_config(config, app_options, argv):
     """
     options = docopt(display_config.__doc__, argv=argv)
     scheduler = config.scheduler()
-    release = scheduler.release()
+    release = scheduler.release(config.app)
     if release is None:
         sys.exit("No release.")
     if options['CONFIG']:
@@ -302,7 +224,8 @@ def display_config(config, app_options, argv):
         for pair in options['CONFIG']:
             name, value = pair.split('=', 1)
             app_config[name] = value
-        release = scheduler.create_release('Config change', 
+        release = scheduler.create_release(config.app,
+                                           'Config change', 
                                            release['build'],
                                            release['image'],
                                            release['pstable'],
@@ -321,7 +244,7 @@ def restart(config, app_options, argv):
     Usage: gilliam restart NAME
     """
     options = docopt(restart.__doc__, argv=argv)
-    config.scheduler().restart_proc(options['NAME'])
+    config.scheduler().restart_proc(config.app, options['NAME'])
 
 
 @expose("help")
@@ -349,7 +272,7 @@ def main():
         sys.exit("Unknown command")
     config = Config()
     if options['--app']:
-        config.set_app(options['--app'])
+        config.app = options['--app']
     try:
         COMMANDS[command](config, options, [command] + options['<args>'])
     except RuntimeError, re:

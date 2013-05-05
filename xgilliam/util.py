@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import subprocess
+
 from datetime import datetime
 import dateutil.parser
 
@@ -20,28 +22,7 @@ def urlchild(base_url, *args):
     return base_url + ''.join([('/%s' % arg) for arg in args])
 
 
-def from_now(dt):
-    """Calculate how many seconds/minutes/hours something happened."""
-    if not isinstance(dt, datetime):
-        dt = dateutil.parser.parse(dt)
-    return datetime.utcnow() - dt
-
-
-def format_timedelta(td):
-    days, s = divmod(td.total_seconds(), 24 * 3600)
-    hours, remainder = divmod(s, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    values = []
-    for v, suffix in zip((days, hours, minutes, seconds),
-                         ('d', 'h', 'm', 's')):
-        if v:
-            values.append('%d%s' % (v, suffix))
-    return ''.join(values)
-
-
 def pretty_date(time):
-    """
-    """
     now = datetime.utcnow()
     diff = now - time 
     second_diff = diff.seconds
@@ -72,3 +53,34 @@ def pretty_date(time):
     if day_diff < 365:
         return str(day_diff/30) + " months ago"
     return str(day_diff/365) + " years ago"
+
+
+def check_output(*popenargs, **kwargs):
+    """Run command with arguments and return its output as a byte string.
+
+    If the exit code was non-zero it raises a CalledProcessError.  The
+    CalledProcessError object will have the return code in the returncode
+    attribute and output in the output attribute.
+
+    The arguments are the same as for the Popen constructor.  Example:
+
+    >>> check_output(["ls", "-1", "/dev/null"])
+    '/dev/null\n'
+
+    The stdout argument is not allowed as it is used internally.
+    To capture standard error in the result, use stderr=STDOUT.
+
+    >>> check_output(["/bin/sh", "-c", "echo hello world"], stderr=STDOUT)
+    'hello world\n'
+    """
+    if 'stdout' in kwargs:
+        raise ValueError('stdout argument not allowed, it will be overridden.')
+    process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
+    output = process.communicate()[0]
+    retcode = process.poll()
+    if retcode:
+        cmd = kwargs.get("args")
+        if cmd is None:
+            cmd = popenargs[0]
+        raise subprocess.CalledProcessError(retcode, cmd, output=output)
+    return output

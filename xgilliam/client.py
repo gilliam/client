@@ -39,6 +39,7 @@ import subprocess
 import sys
 from textwrap import dedent
 import yaml
+import json
 import dateutil.parser
 
 from xgilliam.config import Config
@@ -250,6 +251,29 @@ def help(config, app_options, argv, stdout=sys.stdout):
     else:
         command = COMMANDS[options['COMMAND']]
         stdout.write(dedent(command.__doc__))
+
+@expose("host-add")
+def host_add(config, app_options, argv):
+    """\
+    Add a hypervisor host to the scheduler.
+
+    Usage: gilliam host-add <HOST> [<PORT>] [OPTIONS...]
+    """
+    options = docopt(host_add.__doc__, argv=argv)
+    if not options['<PORT>']:
+        options['<PORT>'] = 9000
+    host_options = {}
+    if options['OPTIONS']:
+        for pair in options['OPTIONS']:
+            name, value = pair.split('=', 1)
+            try:
+                value = json.loads(value)
+            except ValueError:
+                pass
+            host_options[name] = value
+    config.scheduler().host_add(options['<HOST>'],
+                                int(options['<PORT>']),
+                                host_options)
 
 
 def main():

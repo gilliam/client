@@ -45,6 +45,22 @@ class SchedulerAPI(object):
         self.endpoint = endpoint
         self.requests = requests
 
+    def host_add(self, host, port, options):
+        """Add a hypervisor host to the scheduler.
+
+        @param host: Address or IP address of the host.
+        
+        @param port: TCP port where the hypervisor exposes its API.
+
+        @param options: Options for the hypervisor host.
+        """
+        request = {'host': host, 'port': port, 'capacity': 1,
+                   'options': options}
+        response = self.requests.post(urlchild(self.endpoint, 'hypervisor'),
+                                      data=json.dumps(request))
+        response.raise_for_status()
+        return response.json()
+
     def app(self, app):
         """Return the current app."""
         return self._get_json(urlchild(self.endpoint, 'app', app))

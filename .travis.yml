@@ -1,0 +1,24 @@
+--- 
+install: pip install -r requirements.txt --use-mirrors
+before_install: 
+- pip install --use-mirrors Cython
+after_script: 
+- test $TRAVIS_BRANCH = master && fpm -s python -t deb -n gilliam-client ./setup.py && travis-artifacts upload --path *.deb --target-path /
+env: 
+  global: 
+  - ARTIFACTS_S3_BUCKET: gilliam-artifacts
+  - secure: |-
+      jiejTR6fhBpo6XfX69+/Y+Ybxze7yG/gtLLbECG0AzP+QW91jDOuDbPruHpE
+      mrwaCiuww42PYfYO/PAeZx0yCE6twClCX+GHs8qUII+W6iTg9COqqV5uT0Y2
+      Th1hgJ7HU/ItkkXs1O90GDrCszdDgj/r0pw4HrBTLkfDQOdKArQ=
+  - secure: |-
+      i886pN/dNIyrAoZ1tqVCrViyQbDdwAYR8qU0KME8bE7C7y4NTMNsimLJljXh
+      Y/fy9+EHBYYuBPaelm/FnPgiTNH0zkhIkP7aCGDtSrLvkjNuy9+wW59mrPN5
+      W/WXaW8xiW6jhfHk3nU4SdxeHKjWDkgxtvzu97Rlp8Zuc4XHISo=
+before_script: 
+- gem install travis-artifacts
+- gem install fpm
+python: 
+- "2.7"
+language: python
+script: nosetests

@@ -1,0 +1,6 @@
+python-circuit
+PyYAML==3.10
+argparse==1.2.1
+distribute==0.6.24
+requests==1.1.0
+#git+https://github.com/gilliam/gilliam-py.git

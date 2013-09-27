@@ -29,7 +29,7 @@ class Command(object):
     synopsis = "list releases"
 
     def __init__(self, parser):
-        pass
+        parser.add_argument('--dump', metavar="NAME")
 
     def _header(self):
         if os.isatty(sys.stdout.fileno()):
@@ -40,11 +40,24 @@ class Command(object):
         print "%-9s %-15s %s" % (release['name'], release.get(
                 'author', 'unknown'), release.get('message', ''))
 
+    def _dump(self, config, scheduler, name):
+        for release in scheduler.releases(config.formation):
+            if release['name'] == name:
+                yaml.safe_dump(release, sys.stdout, encoding='utf-8', tags=None,
+                          default_flow_style=False)
+                return
+        sys.exit("no such release")
+
     def handle(self, config, options):
         """Handle the command."""
         if not config.formation:
             sys.exit("no formation; specify using -f")
+
         scheduler = config.scheduler()
+
+        if options.dump:
+            return self._dump(config, scheduler, options.dump)
+
         self._header()
         for release in scheduler.releases(config.formation):
             self._print(release, options)

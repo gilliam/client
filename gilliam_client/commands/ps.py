@@ -26,9 +26,10 @@ _VERBOSE = [('name', 35, str), ('release', 7, str), ('state', 9, str),
 def _fmt(spec, data):
     """Format C{data} according to C{spec}."""
     result = []
-    for (field, width, fmter) in spec:
+    for i, (field, width, fmter) in enumerate(spec):
+        last = (len(spec) - 1) == i
         value = fmter(data.get(field, ''))
-        result.append('%-*s' % (width, value))
+        result.append('%-*s' % (0 if last else width, value))
     return ' '.join(result)
 
 

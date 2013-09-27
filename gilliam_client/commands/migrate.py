@@ -14,34 +14,24 @@
 
 import os
 import sys
-import yaml
+import time
 
-from .. import build
+from .. import build, util
 
 
 class Command(object):
-    """Deploy a new release."""
+    """Scale up a release."""
 
-    synopsis = 'Deploy a new release of the formation'
+    synopsis = 'Build a release and migrate to it'
 
     def __init__(self, parser):
-        parser.add_argument('--author', default=None)
-        parser.add_argument('-m', '--message')
+        parser.add_argument('release')
+        parser.add_argument('--rate', dest='rate')
 
     def handle(self, config, options):
         """Handle the command."""
-        if not config.rootdir:
-            sys.exit("cannot find a gilliam.yml file")
         if not config.formation:
             sys.exit("no formation; specify using -f")
-        with open(os.path.join(config.rootdir, 'gilliam.yml')) as fp:
-            defn = yaml.load(fp)
-        name = build.release(config, config.scheduler(),
-                             build.create_services(defn),
-                             author=options.author,
-                             message=options.message,
-                             quiet=options.quiet)
-        if not options.quiet:
-            print "released", name
-        else:
-            print name
+
+        rate = util.parse_rate(options.rate)
+        build.migrate(config, config.scheduler(), options.release, rate)

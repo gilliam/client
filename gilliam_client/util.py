@@ -16,6 +16,16 @@ from urlparse import urljoin
 import os
 
 
+def parse_rate(rate):
+    """Parse rate and return number of seconds to pause between
+    calls to C{scale}.
+    """
+    if not rate:
+        return 0
+    else:
+        return 10
+
+
 def find_rootdir(fn='gilliam.yml'):
     cwd = os.getcwd()
     while cwd != '/':

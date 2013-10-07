@@ -14,14 +14,16 @@
 
 import os
 import sys
-import time
 import yaml
 
+from ..manifest import ProjectManifest
 from .. import build, util
 
 
 class Command(object):
-    """Scale up a release."""
+    """\
+    Build a new release and migrate to it.
+    """
 
     synopsis = 'Build a release and migrate to it'
 
@@ -36,19 +38,12 @@ class Command(object):
             sys.exit("no formation; specify using -f")
 
         rate = util.parse_rate(options.rate)
-        defn = self._read_defn(config)
+        defn = ProjectManifest.load(config.project_dir)
         scheduler = config.scheduler()
-        name = build.release(config, scheduler,
-                             build.create_services(defn),
-                             author=options.author,
-                             message=options.message,
-                             quiet=options.quiet)
+        name = build.release(
+            config, scheduler, build.create_services(defn.services),
+            author=options.author, message=options.message,
+            quiet=options.quiet)
         if not options.quiet:
             print "released %s" % (name,)
         build.migrate(config, scheduler, name, rate)
-
-    def _read_defn(self, config):
-        if not config.rootdir:
-            sys.exit("cannot find a gilliam.yml file")
-        with open(os.path.join(config.rootdir, 'gilliam.yml')) as fp:
-            return yaml.load(fp)

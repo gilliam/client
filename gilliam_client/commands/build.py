@@ -16,6 +16,7 @@ import os
 import sys
 import yaml
 
+from ..manifest import ProjectManifest
 from .. import build
 
 
@@ -30,14 +31,14 @@ class Command(object):
 
     def handle(self, config, options):
         """Handle the command."""
-        if not config.rootdir:
+        if not config.project_dir:
             sys.exit("cannot find a gilliam.yml file")
         if not config.formation:
             sys.exit("no formation; specify using -f")
-        with open(os.path.join(config.rootdir, 'gilliam.yml')) as fp:
-            defn = yaml.load(fp)
+
+        manifest = ProjectManifest.load(config.project_dir)
         name = build.release(config, config.scheduler(),
-                             build.create_services(defn),
+                             build.create_services(manifest.services),
                              author=options.author,
                              message=options.message,
                              quiet=options.quiet)

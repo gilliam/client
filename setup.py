@@ -16,6 +16,7 @@ setup(
         'docopt==0.6.0',
         'requests==1.1.0',
         'python-dateutil==2.1',
-        "gilliam-py"
+        "gilliam-py",
+        "shortuuid"
         ]
 )

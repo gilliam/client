@@ -27,8 +27,22 @@ _SPEC = [('name', 22, str), ('domain', 20, str), ('path', 20, str),
 
 
 class Command(object):
-    """Set up a route via gateway."""
+    """\
+    Set up a route for incoming requests.
 
+    To route all domains done to a specific domain to a service:
+
+      gilliam-cli route api.domain.tld:/{rest:.*?} api.service/{rest}
+
+    For example, to route everything under `/v1/` to the v1 service in
+    the api formation:
+
+      gillial-cli route :/v1/{rest:.*?} v1.api.service/{rest}
+
+    To route authentication requests:
+
+      gilliam-cli route :/login/{provider} auth.service/{provider}
+    """
 
     synopsis = 'Set up a new REST route'
 
@@ -36,6 +50,9 @@ class Command(object):
         parser.add_argument('-d', '--delete', action="store_true")
         parser.add_argument('route', nargs='?')
         parser.add_argument('target', nargs='?')
+        parser.add_argument("--auth-type", dest="auth_type")
+        parser.add_argument('--authenticate-with', '--auth-with',
+                            dest="auth_target")
 
     def _parse_route(self, route):
         if ':' in route:

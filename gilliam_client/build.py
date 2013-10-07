@@ -54,8 +54,11 @@ def merge_releases(current, services):
                 defn['env'] = env
     return services
 
+
 def _last_release(config, scheduler):
     releases = list(scheduler.releases(config.formation))
+    if not releases:
+        return None
     releases.sort(key=lambda release: int(release['name']))
     return releases[-1]
 

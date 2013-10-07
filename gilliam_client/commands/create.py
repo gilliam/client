@@ -14,6 +14,7 @@
 
 import os
 
+from ..config import FormationConfig
 
 class Command(object):
     """Create formation."""
@@ -22,20 +23,18 @@ class Command(object):
 
     def __init__(self, parser):
         parser.add_argument('formation')
+        parser.add_argument('-d', '--project-dir', metavar="DIR",
+                            dest="project_dir")
 
     def handle(self, config, options):
         """Handle the command."""
-        if config.rootdir is None:
-            config.rootdir = os.getcwd()
+        if config.project_dir is None:
+            if not options.project_dir:
+                sys.exit("cannot find project directory")
+            config.project_dir = options.project_dir
 
         scheduler = config.scheduler()
         formation = scheduler.create_formation(options.formation)
-        
-        path = os.path.join(config.rootdir, '.gilliam', 'formation')
-        try:
-            os.makedirs(os.path.dirname(path))
-        except OSError:
-            pass
 
-        with open(path, 'w') as fp:
-            fp.write(formation['name'])
+        form_config = FormationConfig.make(config.project_dir)
+        form_config.formation = formation['name']

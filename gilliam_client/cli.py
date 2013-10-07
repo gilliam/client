@@ -15,48 +15,63 @@
 import argparse
 import os
 import sys
-import time
+import textwrap
 
-from gilliam.service_registry import ServiceRegistryClient
-
-from .config import Config
-from . import commands
-
-
-SERVICE_REGISTRY_ENVVAR_NAME = 'GILLIAM_SERVICE_REGISTRY_NODES'
+from .config import Config, StageConfig, FormationConfig, AuthConfig
+from . import commands, util
 
 
 def main():
     """Main entry point for the command-line tool."""
-    parser = argparse.ArgumentParser('gilliam-cli')
-    parser.add_argument('-f', metavar='NAME', dest='formation',
+    parser = argparse.ArgumentParser(prog='gilliam-cli', formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('-s', '--stage', metavar='STAGE', dest='stage')
+    parser.add_argument('-f', '--formation', metavar='NAME', dest='formation',
                         help='Formation the subcommand applies to')
     parser.add_argument('-q', '--quiet', dest='quiet',
                         action='store_true', default=False)
     cmds = dict(_init_commands(parser))
 
     options = parser.parse_args()
-    config = Config(_service_registry(), options.formation)
 
+    project_dir = util.find_rootdir()
+
+    form_config = (
+        FormationConfig.make(project_dir) if project_dir else
+        None)
+    options.stage = (
+        options.stage if options.stage else
+        form_config.stage if form_config else
+        None)
+    options.formation = (
+        options.formation if options.formation else
+        form_config.formation if form_config else
+        None)
+
+    try:
+        stage_config = (
+            StageConfig.make(options.stage) if options.stage else
+            StageConfig.default())
+    except EnvironmentError as err:
+        sys.exit("%s: %s: cannot read stage config: %s" % (
+                options.cmd, options.stage, err))
+
+    auth_path = os.path.expanduser('~/.gilliam/auth')
+    auth_config = AuthConfig.make(auth_path)
+
+    config = Config(
+        project_dir, stage_config, form_config, auth_config,
+        options.stage, options.formation)
+                         
     cmd = cmds[options.cmd]
     cmd.handle(config, options)
 
     
 def _init_commands(parser):
     """Initialize the commands."""
-    subparsers = parser.add_subparsers(title='subcommands',
-                                       dest='cmd')
+    subparsers = parser.add_subparsers(title='subcommands', dest='cmd')
     for name, cls in commands.load():
-        cmd = cls(subparsers.add_parser(name, help=cls.synopsis,
-                                        description=cls.__doc__))
+        cmd = cls(subparsers.add_parser(
+                name, help=cls.synopsis,
+                description=textwrap.dedent(cls.__doc__),
+                formatter_class=argparse.RawDescriptionHelpFormatter))
         yield name, cmd
-
-
-def _service_registry():
-    """Return a service registry based on the information in the
-    environment.
-    """
-    nodes = os.getenv(SERVICE_REGISTRY_ENVVAR_NAME)
-    if not nodes:
-        sys.exit("envvar %s not set" % (SERVICE_REGISTRY_ENVVAR_NAME,))
-    return ServiceRegistryClient(time, nodes.split(','))

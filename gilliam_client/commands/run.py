@@ -15,6 +15,7 @@
 from functools import partial
 import contextlib
 import fcntl
+import random
 import signal
 import sys
 import struct
@@ -79,6 +80,7 @@ class Command(object):
     synopsis = 'Run a command'
 
     def __init__(self, parser):
+        parser.add_argument('--executor')
         parser.add_argument('-s', '--service', action="store_true",
                             help="get image from service")
         parser.add_argument('-r', '--release', metavar="NAME",
@@ -126,8 +128,20 @@ class Command(object):
         w, h = terminal_size(sys.stdin.fileno())
         process.resize_tty(w, h)
 
+    def _select_executor(self, config, options):
+        alts = config.service_registry.query_formation('executor')
+        if options.executor:
+            for alt in alts:
+                if alt['instance'] == options.executor:
+                    return alt
+            sys.exit("cannot find executor instance %s" % (options.executor,))
+        else:
+            return random.choice([d for (k, d) in alts])
+
     def handle(self, config, options):
-        executor = config.executor()
+        instance = self._select_executor(config, options)
+        executor = config.executor('%s.api.executor.service' % (
+                instance['instance'],))
         env = {}
 
         tty = istty() or options.tty

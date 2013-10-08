@@ -13,14 +13,13 @@
 # limitations under the License.
 
 
+import getpass
 import os
 import sys
 import time
-import getpass
 
 import requests
 
-from ..auth import AuthConfig
 from ..docker import DockerAuth, registry_from_repository
 
 

@@ -14,7 +14,7 @@ setup(
     install_requires=[
         'PyYAML==3.10',
         'docopt==0.6.0',
-        'requests==1.1.0',
+        'requests==2.0',
         'python-dateutil==2.1',
         "gilliam-py",
         "shortuuid"

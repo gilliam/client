@@ -28,3 +28,6 @@ class Service(object):
     def build(self, config, quiet):
         """Build the service and return its release definition."""
         return scheduler.make_service(self.IMAGE, None, self.PORTS)
+
+    def commit(self, config, quiet):
+        pass

@@ -32,10 +32,13 @@ def create_services(defn):
     return services
 
 
-def _build_services(config, services, quiet):
+def _build_services(config, services, quiet, commit=True):
     release = {}
     for name, service in services.items():
         release[name] = service.build(config, quiet)
+    if commit:
+        for name, service in services.items():
+            service.commit(config, quiet)
     return release
 
 
@@ -64,8 +67,9 @@ def _last_release(config, scheduler):
 
 
 def release(config, scheduler, services, author=None, message='',
-            quiet=False, override_env=False):
-    built_services = _build_services(config, services, quiet)
+            quiet=False, override_env=False, commit=True):
+    built_services = _build_services(config, services, quiet,
+                                     commit=commit)
     while True:
         current = _last_release(config, scheduler)
         try:

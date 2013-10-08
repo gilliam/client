@@ -18,6 +18,7 @@ from fnmatch import fnmatch
 import hashlib
 import json
 import os
+import random
 import sys
 import subprocess
 import requests
@@ -116,33 +117,44 @@ class Service(object):
         self.name = name
         self.defn = defn
 
+    def _select_executor(self, config):
+        alts = config.service_registry.query_formation('executor')
+        alt = random.choice([d for (k, d) in alts])
+        return config.executor('%s.api.executor.service' % (
+                alt['instance'],))
+
     def build(self, config, quiet, dry_run=True):
         """Build the service and return its release definition."""
-        builder = config.builder()
+        self.executor = self._select_executor(config)
+        builder = config.builder(self.executor)
         approot = os.path.join(config.project_dir, self.defn.get('approot', '.'))
 
-        credentials = self._check_credentials(config)
+        self.credentials = self._check_credentials(config)
         image = '%s-%s' % (config.formation, self.name)
-        repository = make_repository(config, image)
-        tag = _compute_tag(approot)
+        self.repository = make_repository(config, image)
+        self.tag = _compute_tag(approot)
 
         if not quiet:
             print "[%s] start building ..." % (self.name,)
 
         with _stream_tarball(approot) as process:
             reader = iter(partial(process.stdout.read, self._CHUNK_SIZE), '')
-            exit_code = builder.build(repository, tag, reader, sys.stdout)
+            exit_code = builder.build(self.repository, self.tag,
+                                      reader, sys.stdout)
 
         if exit_code:
             sys.exit("[%s] build failed: %d" % (self.name, exit_code,))
         else:
             if not quiet:
                 print "[%s] build done! will start pushing ..." % (self.name,)
-            
 
-        image = '%s:%s' % (repository, tag)
+        image = '%s:%s' % (self.repository, self.tag)
         return scheduler.make_service(image, self.defn.get('script'),
             self.defn.get('ports', []))
+
+    def commit(self, config, quiet):
+        """Commit the build of the service."""
+        self.executor.push_image(self.repository, self.credentials)
 
     def _check_credentials(self, config):
         """Check that the user has authenticated with the
@@ -158,14 +170,15 @@ class Service(object):
 
         if docker_auth.anonymous(registry):
             return None
-        elif cred:
-            docker_creds = docker_auth.check(registry,
-                                             cred.username,
-                                             cred.password)
-            if not docker_creds:
-                raise Exception("need to authenticate with %s" % (
-                        registry,))
 
-            return docker_creds
-        else:
-            return None
+        if not cred:
+            raise Exception("need to authenticate with %s" % (
+                    registry,))
+
+        authcfg = docker_auth.check(registry, cred.username,
+                                    cred.password)
+        if not authcfg:
+            raise Exception("need to authenticate with %s" % (
+                    registry,))
+
+        return authcfg

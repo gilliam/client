@@ -24,7 +24,7 @@ def is_registry(repository):
     """A registry is identified by the fact that the repository
     includes a dot or a colon.
     """
-    return '.' in repository in ':' in repository
+    return '.' in repository or ':' in repository
 
 
 def make_repository(config, name):
@@ -61,6 +61,10 @@ def _verify_registry(registry):
 
 def _registry_endpoint(registry):
     """Convert a registry into an endpoint."""
+    try:
+        registry, repository = registry.split('/', 1)
+    except TypeError:
+        pass
     _verify_registry(registry)
     return 'https://%s/v1' % (registry,)
 

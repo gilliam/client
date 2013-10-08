@@ -207,7 +207,7 @@ class StageConfig(object):
             sys.exit("cannot find address to service registry")
 
     @classmethod
-    def make(cls, path):
+    def make(cls, stage):
         """Construct a stage configuration by reading it from the
         given path.  Read values will be overriden by values from the
         environment, if present.
@@ -217,6 +217,7 @@ class StageConfig(object):
 
         :returns: The stage config object.
         """
+        path = os.path.expanduser("~/.gilliam/stage/" + stage)
         c = cls(path)
         c._set_defaults()
         c._read()
@@ -238,6 +239,21 @@ class StageConfig(object):
         c._set_defaults()
         c._override_from_environment()
         c.check()
+        return c
+
+    @classmethod
+    def create(cls, stage):
+        """Construct a stage configuration by reading it from the
+        given path.  Read values will be overriden by values from the
+        environment, if present.
+
+        The configuration will be checked before it is returned, so
+        this function can raise the same errors as `check`.
+
+        :returns: The stage config object.
+        """
+        path = os.path.expanduser("~/.gilliam/stage/" + stage)
+        c = cls(path)
         return c
 
 

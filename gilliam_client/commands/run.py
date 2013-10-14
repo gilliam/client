@@ -112,7 +112,7 @@ class Command(object):
     def _make_env(self, options):
         env = {}
         for var in options.env:
-            if '=' in env:
+            if '=' in var:
                 var, value = var.split('=', 1)
             else:
                 value = os.getenv(var)

@@ -21,6 +21,7 @@ import sys
 import struct
 import os
 import termios
+import yaml
 
 from gilliam.util import thread
 
@@ -91,14 +92,22 @@ class Command(object):
         parser.add_argument('image')
         parser.add_argument('command', nargs='+')
 
-    def _release(self, config, name):
-        scheduler = config.scheduler()
-        releases = list(scheduler.releases(config.formation))
-        releases.sort(key=lambda release: int(release['name']))
-        for release in releases:
-            if release['name'] == name:
-                return release
-        return releases[-1] if releases else None
+    def _release(self, config, options):
+        try:
+            name = int(options.release)
+        except ValueError:
+            with open(options.release) as fp:
+                return yaml.load(fp)
+        else:
+            if not config.formation:
+                sys.exit("require formation")
+            scheduler = config.scheduler()
+            releases = list(scheduler.releases(config.formation))
+            releases.sort(key=lambda release: int(release['name']))
+            for release in releases:
+                if release['name'] == options.release:
+                    return release
+            return releases[-1] if releases else None
 
     def _make_env(self, options):
         env = {}
@@ -113,10 +122,7 @@ class Command(object):
         return env
 
     def _service(self, config, options, env):
-        if not config.formation:
-            sys.exit("require formation")
-
-        release = self._release(config, options.release)
+        release = self._release(config, options)
         service = release['services'].get(options.image)
         if service is None:
             sys.exit("no such service in release %s" % (release['name'],))

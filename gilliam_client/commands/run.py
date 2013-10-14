@@ -85,7 +85,7 @@ class Command(object):
                             help="get image from service")
         parser.add_argument('-r', '--release', metavar="NAME",
                             help="name of release",)
-        parser.add_argument('-e', '--env', nargs='*' , metavar="VAR")
+        parser.add_argument('-e', '--env', metavar="VAR", action='append')
         parser.add_argument('-t', '--tty', dest='tty', action='store_true',
                             help="force tty input even if ")
         parser.add_argument('image')

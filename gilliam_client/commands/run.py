@@ -90,7 +90,7 @@ class Command(object):
         parser.add_argument('-t', '--tty', dest='tty', action='store_true',
                             help="force tty input even if ")
         parser.add_argument('image')
-        parser.add_argument('command', nargs='+')
+        parser.add_argument('command', nargs='*')
 
     def _release(self, config, options):
         try:
@@ -128,6 +128,8 @@ class Command(object):
             sys.exit("no such service in release %s" % (release['name'],))
 
         options.image = service['image']
+        if not options.command:
+            options.command = service['command']
         env.update(service.get('env', {}))
 
     def _winch(self, process, *args):
@@ -160,8 +162,10 @@ class Command(object):
         if options.env:
             env.update(self._make_env(options))
 
+        command = None if not options.command else options.command
+
         process = executor.run(config.formation, options.image,
-                               env, options.command, tty=tty)
+                               env, command, tty=tty)
         process.wait_for_state('running')
 
         if istty():

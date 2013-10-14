@@ -63,7 +63,7 @@ def _registry_endpoint(registry):
     """Convert a registry into an endpoint."""
     try:
         registry, repository = registry.split('/', 1)
-    except TypeError:
+    except ValueError:
         pass
     _verify_registry(registry)
     return 'https://%s/v1' % (registry,)

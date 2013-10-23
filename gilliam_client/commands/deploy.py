@@ -31,7 +31,7 @@ class Command(object):
         parser.add_argument('--author', default=None)
         parser.add_argument('-m', '--message')
         parser.add_argument('--rate', dest='rate')
-        parser.add_argument('--no-commit', dest='commit',
+        parser.add_argument('--no-push', dest='push_images',
                             default=True, action='store_false')
 
     def handle(self, config, options):
@@ -45,7 +45,7 @@ class Command(object):
         name = build.release(
             config, scheduler, build.create_services(defn.services),
             author=options.author, message=options.message,
-            quiet=options.quiet, commit=options.commit)
+            push_images=options.push_images)
         if not options.quiet:
             print "released %s" % (name,)
         build.migrate(config, scheduler, name, rate)

@@ -42,9 +42,15 @@ def main():
     logging.basicConfig(
         stream=sys.stdout,
         level=(logging.DEBUG if options.debug else
-               logging.INFO if options.verbose else
-               logging.WARNING),
+               logging.DEBUG if options.verbose else
+               logging.WARNING if options.quiet else
+               logging.INFO),
         format=_DEBUG_FORMAT if options.debug else _NORMAL_FORMAT)
+
+    # need to quiet some chatty parts of our deps.
+    requests_logger = logging.getLogger(
+        'requests.packages.urllib3.connectionpool')
+    requests_logger.setLevel(logging.WARNING)
 
     project_dir = util.find_rootdir()
 

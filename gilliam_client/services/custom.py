@@ -146,20 +146,24 @@ class Service(object):
         return config.executor('%s.api.executor.service' % (
                 alt['instance'],))
 
-    def build(self, config, quiet, dry_run=True):
-        """Build the service and return its release definition."""
+    def build(self, config, push_images=True, **options):
+        """Build the service and return its release definition.
+
+        :param bool push_images: If True, check credentials against
+            registry since the built image will be pushed.
+        """
         self.executor = self._select_executor(config)
         builder = config.builder(self.executor)
         approot = os.path.join(config.project_dir, self.defn.get('approot', '.'))
 
-        self.credentials = self._check_credentials(config)
+        if push_images:
+            self.credentials = self._check_credentials(config)
+
         image = '%s-%s' % (config.formation, self.name)
         self.repository = make_repository(config, image)
         self.tag = _compute_tag(approot)
 
-        if not quiet:
-            self.log.info("start building service '{0}':".format(self.name))
-
+        self.log.info("start building service '{0}' ...".format(self.name))
         with _stream_tarball(approot) as process:
             reader = iter(partial(process.stdout.read, self._CHUNK_SIZE), '')
             exit_code = builder.build(
@@ -167,15 +171,18 @@ class Service(object):
 
         if exit_code:
             sys.exit("[%s] build failed: %d" % (self.name, exit_code,))
-        else:
-            self.log.debug("build successful!")
+
+        self.log.debug("build successful!")
 
         image = '%s:%s' % (self.repository, self.tag)
         return scheduler.make_service(image, self.defn.get('script'),
             self.defn.get('ports', []))
 
-    def commit(self, config, quiet):
+    def commit(self, config, push_images=True, **options):
         """Commit the build of the service."""
+        if not push_images:
+            return
+
         t0 = self.time.time()
         self.log.info("start pushing image {0}:".format(self.repository))
         try:

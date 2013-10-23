@@ -25,9 +25,9 @@ class Service(object):
         self.name = name
         self.defn = defn
 
-    def build(self, config, quiet):
+    def build(self, config, **options):
         """Build the service and return its release definition."""
         return scheduler.make_service(self.IMAGE, None, self.PORTS)
 
-    def commit(self, config, quiet):
+    def commit(self, config, **options):
         pass

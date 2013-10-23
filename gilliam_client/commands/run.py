@@ -166,7 +166,7 @@ class Command(object):
 
         process = executor.run(config.formation, options.image,
                                env, command, tty=tty)
-        process.wait_for_state('running')
+        process.wait_for_state('running', 'done', 'error')
 
         if istty():
             with console():

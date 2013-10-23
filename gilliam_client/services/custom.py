@@ -17,11 +17,15 @@ from functools import partial
 from fnmatch import fnmatch
 import hashlib
 import json
+import logging
 import os
 import random
 import sys
 import subprocess
+import time
 import requests
+
+from gilliam import errors
 
 from ..docker import registry_from_repository, make_repository, DockerAuth
 from .. import scheduler
@@ -107,15 +111,34 @@ def _compute_tag(dir):
                     h.update(data)
     return h.hexdigest()
 
-        
+
+class LogFile(object):
+    pending = ''
+
+    def __init__(self, log, indent):
+        self.log = log
+        self.indent = indent
+
+    def write(self, data):
+        data = self.pending + data
+        self.pending = ''
+        lines = data.splitlines(True)
+        if lines[-1][-1] != '\n':
+            self.pending = lines.pop()
+        for line in lines:
+            self.log.info(self.indent + line[:-1])
+
+
 class Service(object):
     """Service for custom code (ie the business logic)."""
 
     _CHUNK_SIZE = 1 * 1024 * 1024
 
     def __init__(self, name, defn):
+        self.log = logging.getLogger('service.custom[{0}]'.format(name))
         self.name = name
         self.defn = defn
+        self.time = time
 
     def _select_executor(self, config):
         alts = config.service_registry.query_formation('executor')
@@ -135,18 +158,17 @@ class Service(object):
         self.tag = _compute_tag(approot)
 
         if not quiet:
-            print "[%s] start building ..." % (self.name,)
+            self.log.info("start building service '{0}':".format(self.name))
 
         with _stream_tarball(approot) as process:
             reader = iter(partial(process.stdout.read, self._CHUNK_SIZE), '')
-            exit_code = builder.build(self.repository, self.tag,
-                                      reader, sys.stdout)
+            exit_code = builder.build(
+                self.repository, self.tag, reader, LogFile(self.log, ' | '))
 
         if exit_code:
             sys.exit("[%s] build failed: %d" % (self.name, exit_code,))
         else:
-            if not quiet:
-                print "[%s] build done! will start pushing ..." % (self.name,)
+            self.log.debug("build successful!")
 
         image = '%s:%s' % (self.repository, self.tag)
         return scheduler.make_service(image, self.defn.get('script'),
@@ -154,7 +176,26 @@ class Service(object):
 
     def commit(self, config, quiet):
         """Commit the build of the service."""
-        self.executor.push_image(self.repository, self.credentials)
+        t0 = self.time.time()
+        self.log.info("start pushing image {0}:".format(self.repository))
+        try:
+            CLEAR = '\033[K'
+            try:
+                for doc in self.executor.push_image(self.repository, self.credentials):
+                    if not 'status' in doc:
+                        sys.stdout.write("\n")
+                    elif 'progress' in doc:
+                        sys.stdout.write("\r{0}{1} [{2}]".format(
+                                CLEAR, doc['status'], doc['progress']))
+                    else:
+                        sys.stdout.write("\r{0}{1}".format(CLEAR, doc['status']))
+                    sys.stdout.flush()
+            except errors.GilliamError:
+                raise
+        finally:
+            sys.stdout.write("\n")
+            t1 = self.time.time()
+            self.log.info("done (time {0}s)".format(t1 - t0))
 
     def _check_credentials(self, config):
         """Check that the user has authenticated with the

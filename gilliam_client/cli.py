@@ -16,9 +16,14 @@ import argparse
 import os
 import sys
 import textwrap
+import logging
 
 from .config import Config, StageConfig, FormationConfig, AuthConfig
 from . import commands, util
+
+
+_DEBUG_FORMAT = '%(name)s [%(levelname)s]: %(message)s'
+_NORMAL_FORMAT = '%(message)s'
 
 
 def main():
@@ -29,9 +34,17 @@ def main():
                         help='Formation the subcommand applies to')
     parser.add_argument('-q', '--quiet', dest='quiet',
                         action='store_true', default=False)
+    parser.add_argument('-D', '--debug', action='store_true')
+    parser.add_argument('--verbose', action='store_true')
     cmds = dict(_init_commands(parser))
 
     options = parser.parse_args()
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=(logging.DEBUG if options.debug else
+               logging.INFO if options.verbose else
+               logging.WARNING),
+        format=_DEBUG_FORMAT if options.debug else _NORMAL_FORMAT)
 
     project_dir = util.find_rootdir()
 

@@ -57,9 +57,11 @@ def main():
     form_config = (
         FormationConfig.make(project_dir) if project_dir else
         None)
+    env_stage = os.getenv('GILLIAM_STAGE')
     options.stage = (
         options.stage if options.stage else
         form_config.stage if form_config else
+        env_stage if env_stage else
         None)
     options.formation = (
         options.formation if options.formation else

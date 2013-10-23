@@ -28,13 +28,15 @@ class Command(object):
 
     def handle(self, config, options):
         """Handle the command."""
-        if config.project_dir is None:
-            if not options.project_dir:
-                sys.exit("cannot find project directory")
+        if options.project_dir:
             config.project_dir = options.project_dir
+        if config.project_dir is None:
+            sys.exit("cannot find project directory")
 
         scheduler = config.scheduler()
         formation = scheduler.create_formation(options.formation)
 
         form_config = FormationConfig.make(config.project_dir)
         form_config.formation = formation['name']
+        if options.stage:
+            form_config.stage = options.stage

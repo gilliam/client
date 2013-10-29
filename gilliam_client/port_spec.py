@@ -39,6 +39,6 @@ def merge_port_specs(left, right):
     port_specs = {ps.private: ps for ps in (
             parse_port_spec(str(ps)) for ps in left)}
     for spec in right:
-        port_spec = _parse_port_spec(spec)
+        port_spec = parse_port_spec(spec)
         port_specs[port_spec.private] = port_spec
     return [fmt_port_spec(ps) for ps in port_specs.values()]

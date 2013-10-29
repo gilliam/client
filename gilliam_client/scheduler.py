@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+
 from requests.exceptions import HTTPError
 
-from . import errors
+from . import errors, util
 
 
 def make_service(image, command, ports):

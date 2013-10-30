@@ -26,6 +26,6 @@ class Command(object):
 
     def handle(self, config, options):
         """Handle the command."""
-        resolver = Resolver(config.registry)
+        resolver = Resolver(config.service_registry)
         host, port = resolver.resolve_host_port(options.host, options.port)
         print "%s %d" % (host, port)

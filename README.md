@@ -101,7 +101,22 @@ one of the executors. Run `gilliam-cli ps` to inspect instances:
     ----------------------------------- ------- ---------
     www.BHCrBMebfG4oZUgix95chH          1       running
 
-...
+To be able to access the service from the outside, we need to set up
+a route:
+
+    $ gilliam-cli route :/example/ www.example.service
+    route 5h7Zf9P3oDGiUpF3opWDzP created
+
+So what does that mean?  It means that `/example/` on the router,
+regardless of domain, will route requests to the example service.
+
+Routes can be listed by issuing `route` command without any arguments:
+
+    $ gilliam-cli route 
+    name                   domain               path                 target
+    ---------------------- -------------------- -------------------- -------------------------
+    5h7Zf9P3oDGiUpF3opWDzP                      /example/            http://www.example.service
+
 
 # Basic Commands
 
@@ -111,9 +126,56 @@ one of the executors. Run `gilliam-cli ps` to inspect instances:
 
 ## Scaling a Release
 
+Scaling a release means to increase or decrease the number of
+instances of that release. 
+
 (FIXME: default to last release, or to <all releases> somehow?)
 
 ## Migrating to a Release
 
 ## Deploying (Build + Migrate)
+
+## Routing
+
+Gilliam has a front-end HTTP router that takes request and forwards
+them to a service for process.
+
+The command `route` takes two arguments, the *route* and the *target*.
+
+    $ gilliam-cli route :/example/ www.example.service
+
+The route can contain a domain name that needs to be matched:
+
+    $ gilliam-cli route api.myapp.com:/example/ www.example.service
+
+The route argument accepts variable matching using the `{var}` syntax,
+like this:
+
+    $ gilliam-cli route :/user/{user} www.user.service/{user}
+
+If you want to specify a specific format for the variable, do so after
+a colon, like this: `{name:REGEX}`.  For example `{rest:.*?}` will
+match the rest of the line, which can be useful if you want to send
+everything to a specific service.
+
+    $ gilliam-cli route :/user/{rest:.*?} www.user.service/{rest}
+
+Note that variable matching is also possible on the domain:
+
+    $ gilliam-cli route {acct}.api.myapp.com:/user/{rest:.*?} api.user.service/{acct}/{rest}
+
+Or in the formation name:
+
+    $ gilliam-cli route {acct}.api.myapp.com:/user/{rest:.*?} api.user-{acct}.service/{rest}
+
+By not specifying any arguments all existing routes will be listed:
+
+    $ gilliam-cli route
+    name                   domain               path                 target
+    ---------------------- -------------------- -------------------- -------------------------
+    5h7Zf9P3oDGiUpF3opWDzP                      /example/            http://www.example.service
+
+Deleting a formation is done using the `-d` option:
+
+    $ gilliam-cli route -d <route-name>
 
